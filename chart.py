@@ -1,71 +1,33 @@
 """
 ETF智能分析Agent - 图表绘制模块
-使用 mplfinance 绘制K线图 + 均线 + 成交量组合图表
+使用 plotly 绘制交互式K线图 + 均线 + 成交量
+（plotly 是 Streamlit 内置依赖，无需额外安装系统字体）
 """
 
-import matplotlib
-import matplotlib.pyplot as plt
-import mplfinance as mpf
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
-from typing import Optional
-import warnings
-import logging
-
-logger = logging.getLogger(__name__)
-
-# ============================================================
-# 中文字体配置（Windows本地优先）
-# ============================================================
-_FONT_CANDIDATES = [
-    "Microsoft YaHei",       # 微软雅黑 (Windows)
-    "SimHei",                # 黑体 (Windows)
-    "PingFang SC",           # 苹方 (macOS)
-    "Hiragino Sans GB",      # 冬青黑体 (macOS)
-    "WenQuanYi Micro Hei",   # 文泉驿 (Linux)
-    "Noto Sans CJK SC",      # Noto (Linux)
-]
-
-# 获取系统所有可用字体
-_available_fonts = {f.name for f in matplotlib.font_manager.fontManager.ttflist}
-_selected_font = None
-for font in _FONT_CANDIDATES:
-    if font in _available_fonts:
-        _selected_font = font
-        break
-
-if _selected_font:
-    # 全局字体设置 — 只用中文字体，不 fallback 到 DejaVu Sans
-    matplotlib.rcParams["font.sans-serif"] = [_selected_font]
-    matplotlib.rcParams["font.family"] = "sans-serif"
-    matplotlib.rcParams["axes.unicode_minus"] = False
-    # 抑制 DejaVu Sans 缺失中文字形的警告
-    warnings.filterwarnings("ignore", message="Glyph.*missing from font.*DejaVu Sans")
-    logger.info(f"Chart font: {_selected_font}")
-else:
-    matplotlib.rcParams["axes.unicode_minus"] = False
-    logger.warning("No CJK font found, Chinese may show as boxes")
 
 
 def plot_kline(
     df: pd.DataFrame,
     code: str,
     name: str,
-    figsize: tuple = (14, 8),
+    figsize: tuple = None,
     show_volume: bool = True,
-) -> plt.Figure:
+) -> go.Figure:
     """
-    绘制K线图 + MA5/MA20均线 + 成交量组合图表。
+    绘制交互式K线图 + MA5/MA20均线 + 成交量。
 
     Args:
-        df: 行情数据DataFrame，需含 Open/High/Low/Close/Volume 列
+        df: 行情数据，需含 Open/High/Low/Close/Volume 列
         code: ETF代码
         name: ETF名称
-        figsize: 图表尺寸
-        show_volume: 是否显示成交量副图
+        show_volume: 是否显示成交量
 
     Returns:
-        matplotlib Figure 对象
+        plotly Figure 对象
     """
     df = df.copy()
 
@@ -74,143 +36,169 @@ def plot_kline(
         from analysis import calc_ma
         df = calc_ma(df)
 
-    # 创建均线叠加图
-    addplots = [
-        mpf.make_addplot(
-            df["MA5"], color="#FF6B6B", width=1.2,
-            label="MA5", linestyle="-"
+    # 创建双Y轴子图
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.7, 0.3],
+        subplot_titles=(f"{name}（{code}）", "成交量"),
+    )
+
+    # === K线图 ===
+    fig.add_trace(
+        go.Candlestick(
+            x=df.index,
+            open=df["Open"],
+            high=df["High"],
+            low=df["Low"],
+            close=df["Close"],
+            name="K线",
+            increasing_line_color="#ef5350",
+            decreasing_line_color="#26a69a",
+            increasing_fillcolor="#ef5350",
+            decreasing_fillcolor="#26a69a",
         ),
-        mpf.make_addplot(
-            df["MA20"], color="#4ECDC4", width=1.2,
-            label="MA20", linestyle="-"
+        row=1, col=1,
+    )
+
+    # === 均线 ===
+    fig.add_trace(
+        go.Scatter(
+            x=df.index, y=df["MA5"],
+            mode="lines", name="MA5",
+            line=dict(color="#FF6B6B", width=1.2),
         ),
-    ]
-
-    # 自定义配色方案（红涨绿跌，符合A股习惯）
-    market_colors = mpf.make_marketcolors(
-        up="#ef5350",       # 阳线填充色（红）
-        down="#26a69a",     # 阴线填充色（绿）
-        edge="inherit",     # 边框继承
-        wick="inherit",     # 影线继承
-        volume={
-            "up": "#ef5350",
-            "down": "#26a69a",
-        },
-        alpha=0.9,
+        row=1, col=1,
     )
 
-    style = mpf.make_mpf_style(
-        marketcolors=market_colors,
-        gridstyle=":",
-        gridcolor="#e0e0e0",
-        facecolor="#fafafa",
-        figcolor="white",
-        y_on_right=False,
+    fig.add_trace(
+        go.Scatter(
+            x=df.index, y=df["MA20"],
+            mode="lines", name="MA20",
+            line=dict(color="#4ECDC4", width=1.2),
+        ),
+        row=1, col=1,
     )
 
-    title = f"{name}（{code}）K线图"
-
-    # 绘制
-    fig, axlist = mpf.plot(
-        df,
-        type="candle",
-        style=style,
-        title=title,
-        ylabel="价格（元）",
-        volume=show_volume,
-        ylabel_lower="成交量（手）" if show_volume else "",
-        addplot=addplots,
-        figsize=figsize,
-        returnfig=True,
-        warn_too_much_data=len(df) + 10,  # 抑制"数据过多"警告
-    )
-
-    # 添加均线图例
-    axlist[0].legend(["MA5 (5日均线)", "MA20 (20日均线)"], loc="upper left",
-                     framealpha=0.9, fontsize=9)
-
-    # 标记金叉/死叉信号
-    if "golden_cross" in df.columns and "death_cross" in df.columns:
+    # === 金叉/死叉标记 ===
+    if "golden_cross" in df.columns:
         golden = df[df["golden_cross"]]
+        if len(golden) > 0:
+            fig.add_trace(
+                go.Scatter(
+                    x=golden.index, y=golden["Low"] * 0.985,
+                    mode="markers+text",
+                    name="金叉",
+                    marker=dict(symbol="triangle-up", size=12, color="red",
+                                line=dict(color="darkred", width=1)),
+                    text=["金叉"] * len(golden),
+                    textposition="bottom center",
+                    textfont=dict(size=10, color="red"),
+                ),
+                row=1, col=1,
+            )
+
+    if "death_cross" in df.columns:
         death = df[df["death_cross"]]
+        if len(death) > 0:
+            fig.add_trace(
+                go.Scatter(
+                    x=death.index, y=death["High"] * 1.015,
+                    mode="markers+text",
+                    name="死叉",
+                    marker=dict(symbol="triangle-down", size=12, color="green",
+                                line=dict(color="darkgreen", width=1)),
+                    text=["死叉"] * len(death),
+                    textposition="top center",
+                    textfont=dict(size=10, color="green"),
+                ),
+                row=1, col=1,
+            )
 
-        for idx in golden.index:
-            if idx in df.index:
-                pos = df.index.get_loc(idx)
-                price = df.iloc[pos]["Low"] * 0.98  # 在K线下方标记
-                axlist[0].scatter(pos, price, marker="^", color="red", s=80,
-                                  zorder=10, edgecolors="darkred", linewidths=0.5)
-                axlist[0].annotate("金叉", (pos, price), fontsize=7, color="red",
-                                   ha="center", va="top", fontweight="bold")
+    # === 成交量 ===
+    if show_volume and "Volume" in df.columns:
+        vol_colors = [
+            "#ef5350" if df["Close"].iloc[i] >= df["Open"].iloc[i] else "#26a69a"
+            for i in range(len(df))
+        ]
+        fig.add_trace(
+            go.Bar(
+                x=df.index, y=df["Volume"],
+                name="成交量",
+                marker_color=vol_colors,
+                opacity=0.6,
+                showlegend=False,
+            ),
+            row=2, col=1,
+        )
 
-        for idx in death.index:
-            if idx in df.index:
-                pos = df.index.get_loc(idx)
-                price = df.iloc[pos]["High"] * 1.02  # 在K线上方标记
-                axlist[0].scatter(pos, price, marker="v", color="green", s=80,
-                                  zorder=10, edgecolors="darkgreen", linewidths=0.5)
-                axlist[0].annotate("死叉", (pos, price), fontsize=7, color="green",
-                                   ha="center", va="bottom", fontweight="bold")
+    # === 布局 ===
+    fig.update_layout(
+        title=dict(
+            text=f"<b>{name}（{code}）</b> K线图",
+            font=dict(size=18),
+        ),
+        xaxis_rangeslider_visible=False,
+        template="plotly_white",
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+        ),
+        height=700,
+        margin=dict(l=50, r=20, t=60, b=30),
+    )
 
-    plt.tight_layout()
+    fig.update_yaxes(title_text="价格（元）", row=1, col=1)
+    fig.update_yaxes(title_text="成交量（手）", row=2, col=1)
+    fig.update_xaxes(title_text="日期", row=2, col=1)
+
     return fig
 
 
 def plot_comparison(
     etf_data: dict[str, tuple[pd.DataFrame, str]],
-    figsize: tuple = (16, 10),
-) -> plt.Figure:
+) -> go.Figure:
     """
-    多ETF对比图：归一化收盘价走势。
+    多ETF归一化走势对比图。
 
     Args:
         etf_data: {code: (df, name)} 字典
-        figsize: 图表尺寸
 
     Returns:
-        matplotlib Figure
+        plotly Figure
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize, gridspec_kw={"height_ratios": [3, 1]})
+    fig = go.Figure()
 
-    colors = plt.cm.Set2(np.linspace(0, 1, len(etf_data)))
-
-    for (code, (df, name)), color in zip(etf_data.items(), colors):
-        # 归一化价格（以起始日为100）
+    colors = ["#ef5350", "#4ECDC4", "#FF6B6B", "#45B7D1", "#96CEB4"]
+    for i, (code, (df, name)) in enumerate(etf_data.items()):
         normalized = df["Close"] / df["Close"].iloc[0] * 100
-        ax1.plot(df.index, normalized, label=f"{name}({code})", color=color, linewidth=2)
+        fig.add_trace(go.Scatter(
+            x=df.index, y=normalized,
+            mode="lines", name=f"{name}({code})",
+            line=dict(color=colors[i % len(colors)], width=2),
+        ))
 
-        # 成交量
-        ax2.bar(df.index, df["Volume"] / 1e6, label=f"{code}", color=color,
-                alpha=0.5, width=0.8)
+    fig.add_hline(y=100, line_dash="dash", line_color="gray",
+                  opacity=0.5, annotation_text="基准线")
 
-    ax1.set_title("ETF归一化走势对比（起始=100）", fontsize=14, fontweight="bold")
-    ax1.set_ylabel("归一化价格")
-    ax1.legend(loc="best", framealpha=0.9)
-    ax1.grid(True, alpha=0.3)
-    ax1.axhline(y=100, color="gray", linestyle="--", alpha=0.5)
+    fig.update_layout(
+        title="<b>ETF归一化走势对比</b>（起始=100）",
+        template="plotly_white",
+        hovermode="x unified",
+        height=500,
+    )
+    fig.update_yaxes(title_text="归一化价格")
+    fig.update_xaxes(title_text="日期")
 
-    ax2.set_title("成交量对比（百万手）", fontsize=12)
-    ax2.set_ylabel("成交量（百万手）")
-    ax2.legend(loc="best", framealpha=0.9)
-    ax2.grid(True, alpha=0.3)
-
-    plt.tight_layout()
     return fig
 
 
-def save_chart(fig: plt.Figure, filepath: str, dpi: int = 150) -> str:
-    """
-    保存图表到文件。
-
-    Args:
-        fig: Figure对象
-        filepath: 保存路径
-        dpi: 分辨率
-
-    Returns:
-        文件路径
-    """
-    fig.savefig(filepath, dpi=dpi, bbox_inches="tight",
-                facecolor="white", edgecolor="none")
-    plt.close(fig)
+def save_chart(fig: go.Figure, filepath: str) -> str:
+    """保存图表为静态图片"""
+    fig.write_image(filepath, width=1400, height=800)
     return filepath

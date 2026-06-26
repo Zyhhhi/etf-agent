@@ -1,5 +1,1 @@
-# Streamlit Cloud 系统依赖
-fonts-wqy-zenhei
-libxml2
-libxslt
-
+# 本项目使用 plotly（无需系统字体依赖）

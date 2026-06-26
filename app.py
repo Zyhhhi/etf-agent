@@ -271,7 +271,7 @@ with tab1:
         with st.spinner("正在绘制图表..."):
             try:
                 fig = plot_kline(df, code, name)
-                st.pyplot(fig)
+                st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
                 st.error(f"❌ 图表绘制失败: {e}")
 

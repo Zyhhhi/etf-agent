@@ -1,7 +1,6 @@
 baostock
 pandas
-matplotlib
-mplfinance
+plotly
 streamlit
 schedule
 openai
