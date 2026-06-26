@@ -148,37 +148,42 @@ def generate_pdf(
         ("量比", f'{stats.get("volume_ratio", "N/A")}'),
         ("波动率", f'{stats.get("volatility", "N/A")}%'),
     ]
-    col_w = pdf.w / 4
-    for i, (label, value) in enumerate(metrics):
-        x = 10 + (i % 4) * col_w
-        if i % 4 == 0 and i > 0:
-            pdf.ln(6)
-        pdf.set_xy(x, pdf.get_y())
-        pdf.set_font(*body_bold)
-        pdf.cell(col_w, 5, f"{label}: ", new_x="RIGHT", new_y="LAST")
-        pdf.set_font(*body_font)
-        pdf.cell(col_w, 5, str(value), new_x="LMARGIN", new_y="LAST")
-    pdf.ln(8)
+    # 用简单表格布局，每行两个指标，避免文字重叠
+    for i in range(0, len(metrics), 2):
+        row_y = pdf.get_y()
+        for j in range(2):
+            idx = i + j
+            if idx >= len(metrics):
+                break
+            label, value = metrics[idx]
+            x = 10 + j * 95
+            pdf.set_xy(x, row_y)
+            pdf.set_font(*body_bold)
+            pdf.cell(25, 6, f"{label}:", new_x="RIGHT", new_y="LAST")
+            pdf.set_font(*body_font)
+            pdf.cell(65, 6, str(value), new_x="LMARGIN", new_y="LAST")
+        pdf.ln(7)
+    pdf.ln(3)
 
     # === AI分析报告 ===
     pdf.set_font(*h2_font)
     pdf.cell(0, 10, "AI分析报告", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font(*body_font)
 
-    # 清理 markdown 格式符号和 emoji，保留纯文本
+    # 清理 markdown 格式符号和 emoji
     import re
     report_text = ai_report.replace("*", "").replace("#", "").replace("`", "")
     report_text = re.sub(r'[\U0001F300-\U0001F9FF☀-➿︀-﻿]', '', report_text)
-    # 分行写入
+    # 按行输出，加大行高避免 CJK 文字重叠
     for line in report_text.split("\n"):
         line = line.strip()
         if not line:
-            pdf.ln(3)
+            pdf.ln(2)
             continue
-        # 检查是否超出页面宽度
-        safe_line = line[:120]  # 截断超长行
-        pdf.multi_cell(0, 5, safe_line, align="L")
-    pdf.ln(5)
+        if len(line) > 120:
+            line = line[:120]
+        pdf.multi_cell(0, 6, line, align="L")
+    pdf.ln(3)
 
     # === 免责声明 ===
     pdf.set_font(*h2_font)
