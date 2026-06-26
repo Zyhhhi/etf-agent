@@ -174,9 +174,11 @@ def fetch_etf_data(code: str, months: int = 3) -> pd.DataFrame:
         errors.append(f"baostock: {e}")
         logger.warning(f"baostock 获取 {code} 失败，尝试 akshare...")
 
-    # 备选 akshare（需国内网络）
+    # 备选 akshare（需国内网络，仅在已安装时尝试）
     try:
         return _fetch_akshare(code, months)
+    except ImportError:
+        errors.append("akshare: 未安装，已跳过")
     except Exception as e:
         errors.append(f"akshare: {e}")
 
