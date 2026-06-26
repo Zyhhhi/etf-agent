@@ -1,0 +1,2 @@
+# Streamlit Cloud 中文字体支持
+fonts-wqy-zenhei
