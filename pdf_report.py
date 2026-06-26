@@ -10,24 +10,49 @@ from fpdf import FPDF
 
 
 def _find_cjk_font() -> str:
-    """查找系统中可用的中文字体文件"""
+    """查找系统中可用的中文字体文件，找不到则自动下载"""
     candidates = [
-        # Streamlit Cloud / Linux (after apt install fonts-wqy-zenhei)
         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
         "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-        # Windows
         "C:/Windows/Fonts/msyh.ttc",
         "C:/Windows/Fonts/simhei.ttf",
-        # macOS
         "/System/Library/Fonts/PingFang.ttc",
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
     ]
     for path in candidates:
         if os.path.exists(path):
             return path
-    return None  # No CJK font found — will use built-in (Chinese shows as boxes)
+
+    # 本地没有，自动下载一个小体积中文字体
+    cache_dir = os.path.join(tempfile.gettempdir(), "etf-agent-fonts")
+    os.makedirs(cache_dir, exist_ok=True)
+    font_path = os.path.join(cache_dir, "cjk-font.ttf")
+
+    if not os.path.exists(font_path):
+        try:
+            import requests
+            # 多个备用 URL，按优先级尝试
+            urls = [
+                "https://raw.githubusercontent.com/anthonyfok/fonts-wqy-microhei/master/wqy-microhei.ttc",
+                "https://github.com/anthonyfok/fonts-wqy-microhei/raw/master/wqy-microhei.ttc",
+            ]
+            for url in urls:
+                try:
+                    r = requests.get(url, timeout=45)
+                    if r.status_code == 200 and len(r.content) > 100000:
+                        with open(font_path, "wb") as f:
+                            f.write(r.content)
+                        break
+                except Exception:
+                    continue
+            if not os.path.exists(font_path):
+                return None
+        except Exception:
+            return None
+
+    return font_path
 
 
 def generate_pdf(
