@@ -28,6 +28,23 @@ def get_etf_name(code: str) -> str:
     """根据代码获取ETF名称，未知代码返回空字符串"""
     return ETF_NAME_MAP.get(code, f"ETF{code}")
 
+
+def validate_etf_code(code: str) -> str:
+    """
+    校验并清洗ETF代码输入。
+    防止注入攻击：只允许6位纯数字，拒绝特殊字符。
+    """
+    code = code.strip()
+    if not code:
+        raise ValueError("ETF代码不能为空")
+    if not code.isdigit():
+        raise ValueError(f"无效的ETF代码 '{code}'：只能包含数字")
+    if len(code) != 6:
+        raise ValueError(f"无效的ETF代码 '{code}'：必须为6位数字")
+    if code.startswith("9"):
+        raise ValueError(f"不支持的ETF代码 '{code}'：9开头为B股")
+    return code
+
 # ============================================================
 # 路径配置
 # ============================================================

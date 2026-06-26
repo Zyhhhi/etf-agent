@@ -1,7 +1,7 @@
-yfinance
-baostock
-pandas
-plotly
-requests
-streamlit
-schedule
+yfinance==0.2.55
+baostock==0.9.2
+pandas==2.2.3
+plotly==6.0.0
+requests==2.32.3
+streamlit==1.42.0
+schedule==1.2.2

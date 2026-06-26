@@ -20,7 +20,7 @@ from config import (
     DEFAULT_ETF_LIST, REPORT_DIR, TIME_RANGES,
     DEEPSEEK_API_KEY,
     MA_SHORT, MA_LONG,
-    get_etf_name,
+    get_etf_name, validate_etf_code,
 )
 from data import fetch_etf_data
 from analysis import calc_ma, calc_volume_ma, detect_cross, calc_stats, get_latest_signal
@@ -127,7 +127,12 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     if code_input != st.session_state.current_code:
-        st.session_state.current_code = code_input.strip()
+        code_input = code_input.strip()
+        try:
+            code_input = validate_etf_code(code_input)
+            st.session_state.current_code = code_input
+        except ValueError as e:
+            st.error(f"⚠️ {e}")
 
     # 时间范围
     st.markdown("### 📅 时间范围")
