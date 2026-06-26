@@ -271,15 +271,31 @@ with tab1:
                     st.warning("⚠️ 跳过：API Key 未设置")
 
                 st.session_state.df = df
-                st.session_state.chart_fig = fig
                 st.session_state.ai_report = report
                 st.session_state.data_loaded = True
+
+                # 立即生成 PDF 供下载
+                if report:
+                    import tempfile, os
+                    pdf_path = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False).name
+                    try:
+                        generate_pdf(fig, report, code, name, calc_stats(df), pdf_path)
+                        with open(pdf_path, "rb") as f:
+                            st.session_state.pdf_bytes = f.read()
+                        os.unlink(pdf_path)
+                        st.write("✅ PDF 报告已就绪")
+                    except Exception as e:
+                        st.session_state.pdf_bytes = None
+                        st.write(f"⚠️ PDF生成跳过: {e}")
+
+                del fig  # 释放 plotly figure（不可序列化）
                 dataset_ok = True
                 status.update(label=f"✅ {name}({code}) 分析完成", state="complete")
 
             if not dataset_ok:
                 st.session_state.data_loaded = False
                 st.session_state.df = None
+                st.session_state.pdf_bytes = None
 
     # 如果有数据，显示分析结果
     if st.session_state.data_loaded and st.session_state.df is not None:
@@ -328,15 +344,11 @@ with tab1:
 
         # --- K线图表 ---
         st.markdown("### 📈 K线图 + 技术指标")
-        if "chart_fig" in st.session_state and st.session_state.chart_fig is not None:
-            st.plotly_chart(st.session_state.chart_fig, use_container_width=True)
-        else:
-            try:
-                fig = plot_kline(df, code, name)
-                st.session_state.chart_fig = fig
-                st.plotly_chart(fig, use_container_width=True)
-            except Exception as e:
-                st.error(f"❌ 图表绘制失败: {e}")
+        try:
+            fig = plot_kline(df, code, name)
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:
+            st.error(f"❌ 图表绘制失败: {e}")
 
         # --- 技术指标详情 ---
         with st.expander("📋 技术指标详情", expanded=False):
@@ -380,20 +392,14 @@ with tab1:
         st.markdown('</div>', unsafe_allow_html=True)
 
         # --- PDF 下载按钮 ---
-        if report and "chart_fig" in st.session_state:
-            pdf_path = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False).name
-            try:
-                generate_pdf(st.session_state.chart_fig, report, code, name, stats, pdf_path)
-                with open(pdf_path, "rb") as f:
-                    st.download_button(
-                        label="📄 一键导出PDF报告",
-                        data=f,
-                        file_name=f"{code}_{name}_分析报告.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                    )
-            except Exception as e:
-                st.caption(f"PDF生成失败: {e}")
+        if st.session_state.get("pdf_bytes"):
+            st.download_button(
+                label="📄 一键导出PDF报告",
+                data=st.session_state.pdf_bytes,
+                file_name=f"{code}_{name}_分析报告.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
         # 免责声明
         st.caption("⚠️ 以上分析由AI自动生成，仅供参考，不构成投资建议。投资有风险，入市需谨慎。")
