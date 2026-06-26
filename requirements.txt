@@ -5,3 +5,5 @@ plotly==6.0.0
 requests==2.32.3
 streamlit==1.42.0
 schedule==1.2.2
+fpdf2==2.8.2
+kaleido==0.2.1

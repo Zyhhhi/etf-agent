@@ -1,2 +1,1 @@
-libxml2-dev
-libxslt1-dev
+fonts-wqy-zenhei

@@ -10,6 +10,7 @@ import sys
 import json
 import time
 import threading
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from data import fetch_etf_data
 from analysis import calc_ma, calc_volume_ma, detect_cross, calc_stats, get_latest_signal
 from chart import plot_kline
 from ai_report import generate_report
+from pdf_report import generate_pdf
 
 # ============================================================
 # 页面配置
@@ -213,16 +215,45 @@ with tab1:
         st.session_state.df = None
 
     if fetch_clicked or (not st.session_state.data_loaded and code):
-        with st.spinner(f"正在获取 {name}({code}) 数据，请稍候..."):
+        dataset_ok = False
+        with st.status(f"🔍 正在分析 {name}({code}) ...", expanded=True) as status:
+            st.write("📡 拉取行情数据...")
             try:
                 df = fetch_etf_data(code, months)
+                st.write(f"✅ 获取 {len(df)} 条日线数据")
+            except Exception as e:
+                st.error(f"❌ 数据获取失败: {e}")
+                status.update(label="❌ 分析失败", state="error")
+                st.session_state.data_loaded = False
+                st.session_state.df = None
+                dataset_ok = False
+            else:
+                st.write("📊 计算技术指标...")
                 df = calc_ma(df)
                 df = calc_volume_ma(df)
                 df = detect_cross(df)
+                st.write("✅ MA5/MA20 · 金叉死叉 · 量比 · 波动率")
+
+                st.write("📈 生成K线图表...")
+                fig = plot_kline(df, code, name)
+                st.write(f"✅ 交互式K线图（{len(fig.data)}个图层）")
+
+                st.write("🤖 AI生成分析报告...")
+                if DEEPSEEK_API_KEY:
+                    report = generate_report(df, code, name)
+                    st.write("✅ DeepSeek 分析报告完成")
+                else:
+                    report = None
+                    st.warning("⚠️ 跳过：API Key 未设置")
+
                 st.session_state.df = df
+                st.session_state.chart_fig = fig
+                st.session_state.ai_report = report
                 st.session_state.data_loaded = True
-            except Exception as e:
-                st.error(f"❌ 数据获取失败: {e}")
+                dataset_ok = True
+                status.update(label=f"✅ {name}({code}) 分析完成", state="complete")
+
+            if not dataset_ok:
                 st.session_state.data_loaded = False
                 st.session_state.df = None
 
@@ -273,9 +304,12 @@ with tab1:
 
         # --- K线图表 ---
         st.markdown("### 📈 K线图 + 技术指标")
-        with st.spinner("正在绘制图表..."):
+        if "chart_fig" in st.session_state and st.session_state.chart_fig is not None:
+            st.plotly_chart(st.session_state.chart_fig, use_container_width=True)
+        else:
             try:
                 fig = plot_kline(df, code, name)
+                st.session_state.chart_fig = fig
                 st.plotly_chart(fig, use_container_width=True)
             except Exception as e:
                 st.error(f"❌ 图表绘制失败: {e}")
@@ -311,18 +345,31 @@ with tab1:
         st.markdown("### 🤖 AI分析报告")
         st.markdown('<div class="report-box">', unsafe_allow_html=True)
 
+        report = st.session_state.get("ai_report")
         if not DEEPSEEK_API_KEY:
             st.warning("⚠️ 请设置 `DEEPSEEK_API_KEY` 环境变量以启用AI分析")
+        elif report:
+            st.markdown(report)
         else:
-            if "ai_report" not in st.session_state or fetch_clicked:
-                with st.spinner("🤖 DeepSeek AI 正在生成分析报告（约10秒）..."):
-                    report = generate_report(df, code, name)
-                    st.session_state.ai_report = report
-
-            if "ai_report" in st.session_state and st.session_state.ai_report:
-                st.markdown(st.session_state.ai_report)
+            st.info('AI报告生成中，如持续无内容请重新点击"开始分析"')
 
         st.markdown('</div>', unsafe_allow_html=True)
+
+        # --- PDF 下载按钮 ---
+        if report and "chart_fig" in st.session_state:
+            pdf_path = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False).name
+            try:
+                generate_pdf(st.session_state.chart_fig, report, code, name, stats, pdf_path)
+                with open(pdf_path, "rb") as f:
+                    st.download_button(
+                        label="📄 一键导出PDF报告",
+                        data=f,
+                        file_name=f"{code}_{name}_分析报告.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                    )
+            except Exception as e:
+                st.caption(f"PDF生成失败: {e}")
 
         # 免责声明
         st.caption("⚠️ 以上分析由AI自动生成，仅供参考，不构成投资建议。投资有风险，入市需谨慎。")
