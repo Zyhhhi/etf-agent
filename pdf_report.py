@@ -85,14 +85,27 @@ def generate_pdf(
     pdf.set_font(*h2_font)
     pdf.cell(0, 10, "K线走势图", new_x="LMARGIN", new_y="NEXT")
     try:
-        # 导出 plotly 图表为图片
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            chart_fig.write_image(tmp.name, width=1200, height=650, scale=2)
-            pdf.image(tmp.name, x=10, w=190)
-            os.unlink(tmp.name)
+        # 导出图表：先尝试 kaleido，失败则用 plotly 内置 to_image
+        img_bytes = None
+        try:
+            img_bytes = chart_fig.to_image(format="png", width=1200, height=650, scale=2)
+        except Exception:
+            try:
+                # plotly 6.x 内置渲染
+                img_bytes = chart_fig.to_image(format="png", width=1200, height=650, scale=2, engine="auto")
+            except Exception:
+                pass
+
+        if img_bytes:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                tmp.write(img_bytes)
+                pdf.image(tmp.name, x=10, w=190)
+                os.unlink(tmp.name)
+        else:
+            raise RuntimeError("无可用图片渲染引擎")
     except Exception as e:
         pdf.set_font(*body_font)
-        pdf.cell(0, 8, f"(图表生成失败: {e})", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, f"(图表跳过: {e})", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
     # === 核心指标 ===

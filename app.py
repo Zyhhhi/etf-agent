@@ -39,6 +39,30 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# 全局异常保护 — 防止未知错误导致白屏
+try:
+    _import_ok = True
+    from config import (
+        DEFAULT_ETF_LIST, REPORT_DIR, TIME_RANGES,
+        DEEPSEEK_API_KEY,
+        MA_SHORT, MA_LONG,
+        get_etf_name, validate_etf_code,
+    )
+    from data import fetch_etf_data
+    from analysis import calc_ma, calc_volume_ma, detect_cross, calc_stats, get_latest_signal
+    from chart import plot_kline
+    from ai_report import generate_report
+    from pdf_report import generate_pdf
+except Exception as _e:
+    _import_ok = False
+    _import_error = str(_e)
+
+# ============================================================
+# 导入失败时直接显示错误（避免无限转圈）
+if not _import_ok:
+    st.error(f"❌ 应用启动失败，依赖导入错误：\n\n```\n{_import_error}\n```")
+    st.stop()
+
 # ============================================================
 # CSS 样式
 # ============================================================
