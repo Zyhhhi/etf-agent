@@ -1,49 +1,66 @@
 """
 ETF智能分析Agent - AI分析报告模块
-使用 DeepSeek API 生成自然语言分析报告
+使用 DeepSeek API 生成自然语言分析报告（纯 requests，无 openai SDK 依赖）
 """
 
-from openai import OpenAI
+import json
+import requests
 from config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from analysis import calc_ma, detect_cross, calc_stats, prepare_data_summary
 
 
-def generate_report(df, code: str, name: str) -> str:
-    """
-    调用DeepSeek API生成ETF分析报告。
-
-    Args:
-        df: 行情数据DataFrame
-        code: ETF代码
-        name: ETF名称
-
-    Returns:
-        分析报告文本（Markdown格式）
-    """
+def _call_deepseek(system_prompt: str, user_prompt: str, max_tokens: int = 800) -> str:
+    """调用 DeepSeek Chat API"""
     if not DEEPSEEK_API_KEY:
         return (
             "⚠️ **DeepSeek API Key 未设置**\n\n"
-            "请设置环境变量 `DEEPSEEK_API_KEY`，例如：\n"
-            "```bash\n"
-            "export DEEPSEEK_API_KEY=sk-xxxxx\n"
-            "```\n"
-            "或在 Windows PowerShell 中：\n"
-            "```powershell\n"
-            "$env:DEEPSEEK_API_KEY=\"sk-xxxxx\"\n"
+            "请在 Streamlit Cloud → Settings → Secrets 中添加：\n"
+            "```toml\n"
+            'DEEPSEEK_API_KEY = "sk-xxxxx"\n'
             "```"
         )
 
-    # 准备数据
+    url = f"{DEEPSEEK_BASE_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.7,
+        "max_tokens": max_tokens,
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=35)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+    except requests.Timeout:
+        return "⏰ **API 请求超时**，请稍后重试。"
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            return "❌ **API Key 无效**，请检查 DEEPSEEK_API_KEY 是否正确。"
+        elif e.response.status_code == 429:
+            return "🚫 **API 频率限制**，请稍后重试。"
+        else:
+            return f"❌ **API 请求失败** (HTTP {e.response.status_code}): {e}"
+    except Exception as e:
+        return f"❌ **AI分析生成失败**: {e}"
+
+
+def generate_report(df, code: str, name: str) -> str:
+    """调用 DeepSeek API 生成 ETF 分析报告（~200字）"""
     df = calc_ma(df)
     df = detect_cross(df)
     data_summary = prepare_data_summary(df)
 
     system_prompt = """你是一位资深的A股ETF分析师，拥有10年量化研究和公募基金管理经验。
-你的分析风格：
-- 基于技术指标和数据事实，不凭空预测
-- 语言通俗易懂，让散户也能理解
-- 客观理性，同时指出机会和风险
-- 结论明确但留有余地，不鼓励盲目操作"""
+你的分析风格：基于技术指标和数据事实，语言通俗易懂，客观理性，结论明确但留有余地。"""
 
     user_prompt = f"""请基于以下ETF行情数据和技术指标，生成一段约200字的自然语言分析报告。
 
@@ -65,51 +82,11 @@ ETF: {name}（{code}）
 > 📊 **成交量**：xxx
 > ⚠️ **风险提示**：xxx"""
 
-    try:
-        client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-
-        response = client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.7,
-            max_tokens=800,
-            timeout=30,
-        )
-
-        report = response.choices[0].message.content
-        return report
-
-    except Exception as e:
-        error_msg = str(e)
-        if "api_key" in error_msg.lower() or "authentication" in error_msg.lower():
-            return f"❌ **API Key 无效**，请检查 `DEEPSEEK_API_KEY` 环境变量是否正确设置。\n\n错误详情: {error_msg}"
-        elif "timeout" in error_msg.lower():
-            return f"⏰ **API 请求超时**，请稍后重试。\n\n错误详情: {error_msg}"
-        elif "rate" in error_msg.lower():
-            return f"🚫 **API 频率限制**，请稍后重试。\n\n错误详情: {error_msg}"
-        else:
-            return f"❌ **AI分析生成失败**\n\n错误详情: {error_msg}\n\n请检查网络连接和API配置后重试。"
+    return _call_deepseek(system_prompt, user_prompt)
 
 
 def generate_signal_report(df, code: str, name: str, signal_type: str) -> str:
-    """
-    针对特定信号（金叉/死叉）生成专项分析报告。
-
-    Args:
-        df: 行情数据DataFrame
-        code: ETF代码
-        name: ETF名称
-        signal_type: "golden_cross" 或 "death_cross"
-
-    Returns:
-        信号分析报告
-    """
-    if not DEEPSEEK_API_KEY:
-        return "⚠️ DeepSeek API Key 未设置"
-
+    """针对金叉/死叉信号生成专项分析报告"""
     df = calc_ma(df)
     df = detect_cross(df)
     data_summary = prepare_data_summary(df)
@@ -127,25 +104,7 @@ def generate_signal_report(df, code: str, name: str, signal_type: str) -> str:
 要求：
 1. 解释该信号的技术含义
 2. 结合成交量验证信号有效性
-3. 给出历史回测参考（该类信号的历史胜率大致范围）
-4. 风险提示和操作建议
-5. 控制在300字以内，Markdown格式"""
+3. 风险提示和操作建议
+4. 控制在300字以内，Markdown格式"""
 
-    try:
-        client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
-
-        response = client.chat.completions.create(
-            model=DEEPSEEK_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.7,
-            max_tokens=1000,
-            timeout=30,
-        )
-
-        return response.choices[0].message.content
-
-    except Exception as e:
-        return f"❌ AI分析生成失败: {str(e)}"
+    return _call_deepseek(system_prompt, user_prompt, max_tokens=1000)

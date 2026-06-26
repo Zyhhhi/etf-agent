@@ -1,6 +1,6 @@
 baostock
 pandas
 plotly
+requests
 streamlit
 schedule
-openai

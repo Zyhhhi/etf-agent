@@ -1,1 +1,2 @@
-# 本项目使用 plotly（无需系统字体依赖）
+libxml2-dev
+libxslt1-dev
