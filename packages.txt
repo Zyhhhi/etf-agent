@@ -1,2 +1,5 @@
-# Streamlit Cloud 中文字体支持
+# Streamlit Cloud 系统依赖
 fonts-wqy-zenhei
+libxml2
+libxslt
+
