@@ -1,3 +1,14 @@
+---
+title: A股ETF智能分析Agent
+emoji: 📈
+colorFrom: green
+colorTo: gray
+sdk: streamlit
+sdk_version: "1.42.0"
+app_file: app.py
+pinned: false
+---
+
 # 📈 A股ETF智能分析Agent
 
 AI驱动的ETF技术分析工具 — K线图 + 技术指标 + DeepSeek AI报告 + 自动信号监控
